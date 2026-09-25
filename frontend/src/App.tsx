@@ -18,6 +18,7 @@ function App() {
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [page, setPage] = useState<Page>('chat')
+  const [quizTopic, setQuizTopic] = useState('')
 
   const API_URL = import.meta.env.VITE_API_URL ||
     (typeof window !== 'undefined' && window.location.hostname.includes('vercel.app')
@@ -43,7 +44,13 @@ function App() {
         body: JSON.stringify({ message: input, session_id: 'default' })
       })
       const data = await response.json()
-      setMessages(prev => [...prev, { role: 'ai', content: data.response }])
+      const aiMessage = data.response || 'I could not generate a response.'
+      setMessages(prev => [...prev, { role: 'ai', content: aiMessage }])
+
+      if (data.redirect_to_quiz && data.suggested_topic) {
+        setQuizTopic(data.suggested_topic)
+        setPage('quiz')
+      }
     } catch (error) {
       setMessages(prev => [...prev, { role: 'ai', content: 'Error: Could not connect to AI' }])
     }
@@ -93,7 +100,7 @@ function App() {
       {page === 'documents' ? (
         <DocumentUpload />
       ) : page === 'quiz' ? (
-        <Quiz />
+        <Quiz initialTopic={quizTopic} />
       ) : (
         <>
           {/* Chat header with clear button */}

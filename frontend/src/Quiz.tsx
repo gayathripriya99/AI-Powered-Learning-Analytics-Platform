@@ -1,7 +1,7 @@
 // Quiz.tsx - Quiz Generator Component
 // User types a topic, AI generates MCQ questions
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 // TypeScript: define what a Question looks like
 interface Question {
@@ -11,8 +11,12 @@ interface Question {
   explanation: string
 }
 
-function Quiz() {
-  const [topic, setTopic] = useState('')
+interface QuizProps {
+  initialTopic?: string
+}
+
+function Quiz({ initialTopic = '' }: QuizProps) {
+  const [topic, setTopic] = useState(initialTopic)
   const [difficulty, setDifficulty] = useState('beginner')
   const [questions, setQuestions] = useState<Question[]>([])
   const [loading, setLoading] = useState(false)
@@ -25,8 +29,19 @@ function Quiz() {
       ? 'https://ai-powered-learning-analytics-platform.onrender.com'
       : 'http://localhost:8000')
 
-  const generateQuiz = async () => {
-    if (!topic.trim()) return
+  useEffect(() => {
+    if (initialTopic && initialTopic.trim()) {
+      setTopic(initialTopic)
+      const timer = setTimeout(() => {
+        generateQuiz(initialTopic)
+      }, 300)
+      return () => clearTimeout(timer)
+    }
+  }, [initialTopic])
+
+  const generateQuiz = async (forcedTopic?: string) => {
+    const selectedTopic = (forcedTopic ?? topic).trim()
+    if (!selectedTopic) return
     setLoading(true)
     setQuestions([])
     setSelected({})
@@ -37,7 +52,7 @@ function Quiz() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          topic,
+          topic: selectedTopic,
           num_questions: 3,
           difficulty
         })
@@ -65,7 +80,6 @@ function Quiz() {
         <h1 className="text-2xl font-bold text-purple-400 mb-2">🧠 Quiz Generator</h1>
         <p className="text-gray-400 mb-6">Generate a quiz on any topic!</p>
 
-        {/* Quiz settings */}
         <div className="bg-gray-800 p-4 rounded-xl mb-6 space-y-3">
           <input
             type="text"
@@ -84,7 +98,7 @@ function Quiz() {
             <option value="advanced">Advanced</option>
           </select>
           <button
-            onClick={generateQuiz}
+            onClick={() => generateQuiz()}
             disabled={loading}
             className="w-full bg-purple-600 hover:bg-purple-700 p-3 rounded-lg font-bold disabled:opacity-50"
           >
@@ -92,15 +106,14 @@ function Quiz() {
           </button>
         </div>
 
-        {/* Questions */}
         {questions.map((q, i) => (
           <div key={i} className="bg-gray-800 p-4 rounded-xl mb-4">
-            <p className="font-bold mb-3">Q{i+1}: {q.question}</p>
+            <p className="font-bold mb-3">Q{i + 1}: {q.question}</p>
             <div className="space-y-2">
               {q.options.map((opt, j) => (
                 <button
                   key={j}
-                  onClick={() => !submitted && setSelected(prev => ({...prev, [i]: opt}))}
+                  onClick={() => !submitted && setSelected(prev => ({ ...prev, [i]: opt }))}
                   className={`w-full text-left p-3 rounded-lg border transition-colors ${
                     submitted
                       ? opt === q.answer
@@ -123,7 +136,6 @@ function Quiz() {
           </div>
         ))}
 
-        {/* Submit button */}
         {questions.length > 0 && !submitted && (
           <button
             onClick={submitQuiz}
@@ -133,14 +145,13 @@ function Quiz() {
           </button>
         )}
 
-        {/* Score */}
         {submitted && (
           <div className="bg-gray-800 p-4 rounded-xl text-center">
             <p className="text-2xl font-bold text-purple-400">
               Score: {score}/{questions.length}
             </p>
             <p className="text-gray-400 mt-1">
-              {score === questions.length ? '🎉 Perfect!' : score > questions.length/2 ? '👍 Good job!' : '📚 Keep studying!'}
+              {score === questions.length ? '🎉 Perfect!' : score > questions.length / 2 ? '👍 Good job!' : '📚 Keep studying!'}
             </p>
           </div>
         )}

@@ -2,6 +2,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 import requests
 import os
+import re
 
 from database.db import get_connection, is_sqlite_db
 
@@ -14,6 +15,44 @@ class ChatRequest(BaseModel):
     message: str
     session_id: str = "default"
 
+def normalize_topic_name(value: str) -> str:
+    cleaned = re.sub(r"\s+", " ", (value or "")).strip()
+    if not cleaned:
+        return "Interview Preparation"
+    return cleaned.strip(". ")
+
+
+def infer_quiz_topic(doc_context: str, message: str) -> str:
+    text = (doc_context or message or "").strip()
+    if not text:
+        return "Interview Preparation"
+
+    lower = text.lower()
+    if "python" in lower:
+        return "Python Interview Questions"
+    if "react" in lower:
+        return "React Interview Questions"
+    if "sql" in lower:
+        return "SQL Interview Questions"
+    if "java" in lower:
+        return "Java Interview Questions"
+    if "resume" in lower or "cv" in lower or "experience" in lower or "skills" in lower:
+        return "Resume and Interview Preparation"
+    if "machine learning" in lower or "ml" in lower:
+        return "Machine Learning Concepts"
+    if "data analysis" in lower or "analytics" in lower:
+        return "Data Analysis Fundamentals"
+
+    sentence = " ".join(text.split())
+    if len(sentence) > 180:
+        sentence = sentence[:180]
+    topic = re.sub(r"[^a-zA-Z0-9\s-]", " ", sentence)
+    parts = [p for p in topic.split() if len(p) > 3]
+    if len(parts) >= 5:
+        return normalize_topic_name(" ".join(parts[:6]))
+    return normalize_topic_name(sentence[:60])
+
+
 def fallback_answer(message: str, history: str = "", doc_context: str = "") -> str:
     text = (message or "").strip()
     if not text:
@@ -23,7 +62,8 @@ def fallback_answer(message: str, history: str = "", doc_context: str = "") -> s
     question = text.strip()
 
     if "quiz" in lower and ("resume" in lower or "cv" in lower or "uploaded" in lower or doc_context):
-        return "Yes — I can create a quiz based on your uploaded resume or document. I would first extract the key skills, experience, and education points, then turn them into short MCQ questions with answers and explanations."
+        topic = infer_quiz_topic(doc_context, text)
+        return f"Yes — I reviewed your uploaded document and the best quiz topic is '{topic}'. I can open a quiz for that topic immediately and fill it in automatically."
 
     if "resume" in lower or "cv" in lower:
         return "I can help review your resume by highlighting strengths, spotting skill gaps, and suggesting better phrasing. If you want, I can also turn it into interview questions or a quiz based on the content."
@@ -50,35 +90,68 @@ def fallback_answer(message: str, history: str = "", doc_context: str = "") -> s
         return f"Based on our earlier conversation, I can help with that. For your question: '{question}', the best approach is to focus on the main idea, identify the key facts, and then apply them in a small example or practice task."
 
     if doc_context:
-        return f"Using the uploaded document as context, I would answer your question by focusing on the main themes in the file, the important details, and the practical takeaway for {question.lower()}."
+        topic = infer_quiz_topic(doc_context, question)
+        return f"Using the uploaded document as context, I would answer your question by focusing on the main themes in the file, the important details, and the practical takeaway for {question.lower()}. A good quiz topic from this document is '{topic}'."
 
     return f"Here is a simple way to think about it for '{question}': break the topic into the main idea, key facts, and one example, then practice explaining it out loud in your own words."
 
-def search_documents(query: str) -> str:
-    """Search uploaded documents for relevant content."""
+def get_recent_document_context(limit: int = 3) -> str:
     try:
         conn = get_connection()
         cursor = conn.cursor()
-        search_term = f"%{query[:50]}%"
         if is_sqlite_db():
             cursor.execute(
-                "SELECT filename, content FROM documents WHERE lower(content) LIKE lower(?) LIMIT 2",
-                (search_term,)
+                "SELECT filename, content FROM documents ORDER BY created_at DESC LIMIT ?",
+                (limit,)
             )
         else:
             cursor.execute(
-                "SELECT filename, content FROM documents WHERE content ILIKE %s LIMIT 2",
-                (search_term,)
+                "SELECT filename, content FROM documents ORDER BY created_at DESC LIMIT %s",
+                (limit,)
             )
         docs = cursor.fetchall()
         conn.close()
-
-        if docs:
-            context = "\n\n".join([f"From {d['filename']}:\n{d['content'][:500]}" for d in docs])
-            return context
-        return ""
+        if not docs:
+            return ""
+        return "\n\n".join(f"From {d['filename']}:\n{d['content'][:1500]}" for d in docs)
     except Exception:
         return ""
+
+
+def search_documents(query: str) -> str:
+    """Return the most relevant uploaded document context for the current question."""
+    query_text = (query or "").strip()
+    lower_query = query_text.lower()
+
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+
+        if query_text:
+            search_term = f"%{query_text[:50]}%"
+            if is_sqlite_db():
+                cursor.execute(
+                    "SELECT filename, content FROM documents WHERE lower(content) LIKE lower(?) LIMIT 2",
+                    (search_term,)
+                )
+            else:
+                cursor.execute(
+                    "SELECT filename, content FROM documents WHERE content ILIKE %s LIMIT 2",
+                    (search_term,)
+                )
+            docs = cursor.fetchall()
+            if docs:
+                conn.close()
+                return "\n\n".join([f"From {d['filename']}:\n{d['content'][:1500]}" for d in docs])
+
+        if any(word in lower_query for word in ["document", "resume", "cv", "uploaded", "quiz", "topic", "interview", "file", "generate"]):
+            conn.close()
+            return get_recent_document_context()
+
+        conn.close()
+        return get_recent_document_context()
+    except Exception:
+        return get_recent_document_context()
 
 
 def get_recent_chat_history(session_id: str, limit: int = 8) -> str:
@@ -143,7 +216,19 @@ def chat(request: ChatRequest):
         doc_context = search_documents(request.message)
         chat_history = get_recent_chat_history(request.session_id)
 
+        suggested_topic = ""
+        redirect_to_quiz = False
+        lower_msg = request.message.lower()
+        if doc_context and any(word in lower_msg for word in ["quiz", "interview", "topic", "generate", "document", "resume", "cv", "file", "uploaded"]):
+            suggested_topic = infer_quiz_topic(doc_context, request.message)
+            redirect_to_quiz = True
+
         answer = fallback_answer(request.message, chat_history, doc_context)
+        if suggested_topic:
+            answer = (
+                f"I reviewed your uploaded document and the best quiz topic is '{suggested_topic}'. "
+                "I’ve prepared it for quiz generation so you can continue with the topic already filled in."
+            )
 
         if OLLAMA_BASE_URL and OLLAMA_MODEL and is_ollama_available():
             try:
@@ -195,6 +280,8 @@ def chat(request: ChatRequest):
             "message": request.message,
             "response": answer,
             "used_documents": bool(doc_context),
+            "redirect_to_quiz": redirect_to_quiz,
+            "suggested_topic": suggested_topic,
         }
     except Exception as e:
         return {"error": str(e)}

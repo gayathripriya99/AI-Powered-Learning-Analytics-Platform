@@ -56,18 +56,53 @@ def search_documents(query: str) -> str:
     except Exception:
         return ""
 
+
+def get_recent_chat_history(session_id: str, limit: int = 8) -> str:
+    """Return the most recent conversation for this session in plain text."""
+    try:
+        conn = get_connection()
+        cursor = conn.cursor()
+        if is_sqlite_db():
+            cursor.execute(
+                "SELECT role, content FROM chat_history WHERE session_id = ? ORDER BY id DESC LIMIT ?",
+                (session_id, limit)
+            )
+        else:
+            cursor.execute(
+                "SELECT role, content FROM chat_history WHERE session_id = %s ORDER BY id DESC LIMIT %s",
+                (session_id, limit)
+            )
+        rows = cursor.fetchall()
+        conn.close()
+
+        if not rows:
+            return ""
+
+        history = "\n".join(
+            f"{entry['role'].capitalize()}: {entry['content']}" for entry in reversed(rows)
+        )
+        return f"Conversation history:\n{history}\n"
+    except Exception:
+        return ""
+
 @router.post("/chat")
 def chat(request: ChatRequest):
     try:
         doc_context = search_documents(request.message)
+        chat_history = get_recent_chat_history(request.session_id)
 
         if doc_context:
             prompt = f"""You are Priya Mentor AI, a helpful learning assistant.
 
-The user has uploaded documents. Here is relevant content:
+{chat_history}The user has uploaded documents. Here is relevant content:
 {doc_context}
 
 Based on the above context, answer this question:
+{request.message}"""
+        elif chat_history:
+            prompt = f"""You are Priya Mentor AI, a helpful learning assistant.
+
+{chat_history}Answer this question while using the conversation history above as context:
 {request.message}"""
         else:
             prompt = f"""You are Priya Mentor AI, a helpful learning assistant.

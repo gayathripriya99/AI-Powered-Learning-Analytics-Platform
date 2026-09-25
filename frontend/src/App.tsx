@@ -19,7 +19,10 @@ function App() {
   const [loading, setLoading] = useState(false)
   const [page, setPage] = useState<Page>('chat')
 
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+  const API_URL = import.meta.env.VITE_API_URL ||
+    (typeof window !== 'undefined' && window.location.hostname.includes('vercel.app')
+      ? 'https://ai-powered-learning-analytics-platform.onrender.com'
+      : 'http://localhost:8000')
 
   // Save messages to localStorage whenever they change
   useEffect(() => {

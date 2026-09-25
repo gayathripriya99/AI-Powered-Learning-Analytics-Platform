@@ -11,10 +11,17 @@ load_dotenv()
 
 
 def get_allowed_origins():
-    raw_value = os.getenv("FRONTEND_URL", "http://localhost:5173")
+    raw_value = os.getenv(
+        "FRONTEND_URL",
+        "http://localhost:5173,http://127.0.0.1:5173,https://ai-powered-learning-analytics-platform-g6w1g8w8r.vercel.app"
+    )
     origins = [item.strip() for item in str(raw_value).split(",") if item.strip()]
     if not origins:
-        origins = ["http://localhost:5173"]
+        origins = [
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+            "https://ai-powered-learning-analytics-platform-g6w1g8w8r.vercel.app"
+        ]
     return origins
 
 
@@ -27,6 +34,7 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=get_allowed_origins(),
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

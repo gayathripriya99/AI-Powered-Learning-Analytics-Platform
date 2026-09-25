@@ -16,7 +16,10 @@ function DocumentUpload() {
   const [uploading, setUploading] = useState(false)           // is file uploading?
   const [message, setMessage] = useState('')                  // success/error message
 
-  const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
+  const API_URL = import.meta.env.VITE_API_URL ||
+    (typeof window !== 'undefined' && window.location.hostname.includes('vercel.app')
+      ? 'https://ai-powered-learning-analytics-platform.onrender.com'
+      : 'http://127.0.0.1:8000')
 
   // This runs when user picks a file
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {

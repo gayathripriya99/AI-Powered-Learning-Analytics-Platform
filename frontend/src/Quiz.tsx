@@ -20,7 +20,10 @@ function Quiz() {
   const [submitted, setSubmitted] = useState(false)
   const [score, setScore] = useState(0)
 
-  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
+  const API_URL = import.meta.env.VITE_API_URL ||
+    (typeof window !== 'undefined' && window.location.hostname.includes('vercel.app')
+      ? 'https://ai-powered-learning-analytics-platform.onrender.com'
+      : 'http://localhost:8000')
 
   const generateQuiz = async () => {
     if (!topic.trim()) return

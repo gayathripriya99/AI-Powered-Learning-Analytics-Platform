@@ -129,6 +129,14 @@ def build_ollama_messages(request_message: str, chat_history: str, doc_context: 
     return messages
 
 
+def is_ollama_available() -> bool:
+    try:
+        response = requests.get(f"{OLLAMA_BASE_URL}/api/tags", timeout=5)
+        return response.ok
+    except Exception:
+        return False
+
+
 @router.post("/chat")
 def chat(request: ChatRequest):
     try:
@@ -137,7 +145,7 @@ def chat(request: ChatRequest):
 
         answer = fallback_answer(request.message, chat_history, doc_context)
 
-        if OLLAMA_BASE_URL and OLLAMA_MODEL:
+        if OLLAMA_BASE_URL and OLLAMA_MODEL and is_ollama_available():
             try:
                 payload = {
                     "model": OLLAMA_MODEL,
@@ -154,8 +162,11 @@ def chat(request: ChatRequest):
                     message_content = data.get("message", {}).get("content")
                     if message_content:
                         answer = message_content.strip()
+                else:
+                    answer = "I’m running in offline mode right now because the free local model is not reachable. Please make sure Ollama is running and the model is installed."
             except Exception as exc:
                 print(f"Ollama fallback triggered: {exc}")
+                answer = "I’m in offline mode right now because the free local model is not available. Start Ollama and install a model like llama3.2:1b for full chatbot behavior."
 
         conn = get_connection()
         cursor = conn.cursor()

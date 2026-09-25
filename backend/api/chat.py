@@ -7,8 +7,8 @@ from database.db import get_connection, is_sqlite_db
 
 router = APIRouter()
 
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL")
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434").rstrip("/")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:1b")
 
 class ChatRequest(BaseModel):
     message: str
@@ -109,44 +109,51 @@ def get_recent_chat_history(session_id: str, limit: int = 8) -> str:
     except Exception:
         return ""
 
+
+def build_ollama_messages(request_message: str, chat_history: str, doc_context: str) -> list:
+    system_message = (
+        "You are Priya Mentor AI, a helpful learning assistant. "
+        "Answer clearly, use the conversation context when available, and use uploaded document content when relevant. "
+        "Keep answers concise but useful."
+    )
+
+    messages = [{"role": "system", "content": system_message}]
+
+    if doc_context:
+        messages.append({"role": "user", "content": f"Relevant document context:\n{doc_context}"})
+
+    if chat_history:
+        messages.append({"role": "user", "content": chat_history})
+
+    messages.append({"role": "user", "content": request_message})
+    return messages
+
+
 @router.post("/chat")
 def chat(request: ChatRequest):
     try:
         doc_context = search_documents(request.message)
         chat_history = get_recent_chat_history(request.session_id)
 
-        if doc_context:
-            prompt = f"""You are Priya Mentor AI, a helpful learning assistant.
-
-{chat_history}The user has uploaded documents. Here is relevant content:
-{doc_context}
-
-Based on the above context, answer this question:
-{request.message}"""
-        elif chat_history:
-            prompt = f"""You are Priya Mentor AI, a helpful learning assistant.
-
-{chat_history}Answer this question while using the conversation history above as context:
-{request.message}"""
-        else:
-            prompt = f"""You are Priya Mentor AI, a helpful learning assistant.
-Answer this question: {request.message}"""
-
         answer = fallback_answer(request.message, chat_history, doc_context)
+
         if OLLAMA_BASE_URL and OLLAMA_MODEL:
             try:
+                payload = {
+                    "model": OLLAMA_MODEL,
+                    "messages": build_ollama_messages(request.message, chat_history, doc_context),
+                    "stream": False,
+                }
                 response = requests.post(
-                    f"{OLLAMA_BASE_URL}/api/generate",
-                    json={
-                        "model": OLLAMA_MODEL,
-                        "prompt": prompt,
-                        "stream": False,
-                    },
-                    timeout=20,
+                    f"{OLLAMA_BASE_URL}/api/chat",
+                    json=payload,
+                    timeout=30,
                 )
                 if response.ok:
                     data = response.json()
-                    answer = data.get("response", answer)
+                    message_content = data.get("message", {}).get("content")
+                    if message_content:
+                        answer = message_content.strip()
             except Exception as exc:
                 print(f"Ollama fallback triggered: {exc}")
 

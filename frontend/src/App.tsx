@@ -50,6 +50,8 @@ function App() {
       if (data.redirect_to_quiz && data.suggested_topic) {
         setQuizTopic(data.suggested_topic)
         setPage('quiz')
+      } else if (data.needs_technology) {
+        setMessages(prev => [...prev, { role: 'ai', content: data.response }])
       }
     } catch (error) {
       setMessages(prev => [...prev, { role: 'ai', content: 'Error: Could not connect to AI' }])

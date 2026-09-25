@@ -36,6 +36,8 @@ def infer_quiz_topic(doc_context: str, message: str) -> str:
         return "SQL Interview Questions"
     if "java" in lower:
         return "Java Interview Questions"
+    if "aws" in lower:
+        return "AWS Interview Questions"
     if "resume" in lower or "cv" in lower or "experience" in lower or "skills" in lower:
         return "Resume and Interview Preparation"
     if "machine learning" in lower or "ml" in lower:
@@ -51,6 +53,10 @@ def infer_quiz_topic(doc_context: str, message: str) -> str:
     if len(parts) >= 5:
         return normalize_topic_name(" ".join(parts[:6]))
     return normalize_topic_name(sentence[:60])
+
+
+def technology_prompt_for_quiz() -> str:
+    return "Which technology should I quiz you on? Python, React, SQL, Java, AWS, Machine Learning, or Resume/Interview Preparation."
 
 
 def fallback_answer(message: str, history: str = "", doc_context: str = "") -> str:
@@ -218,16 +224,29 @@ def chat(request: ChatRequest):
 
         suggested_topic = ""
         redirect_to_quiz = False
+        needs_technology = False
         lower_msg = request.message.lower()
+
         if doc_context and any(word in lower_msg for word in ["quiz", "interview", "topic", "generate", "document", "resume", "cv", "file", "uploaded"]):
             suggested_topic = infer_quiz_topic(doc_context, request.message)
             redirect_to_quiz = True
+
+        if not doc_context and any(word in lower_msg for word in ["quiz", "interview", "topic", "generate", "practice"]):
+            needs_technology = True
 
         answer = fallback_answer(request.message, chat_history, doc_context)
         if suggested_topic:
             answer = (
                 f"I reviewed your uploaded document and the best quiz topic is '{suggested_topic}'. "
                 "I’ve prepared it for quiz generation so you can continue with the topic already filled in."
+            )
+        elif needs_technology:
+            answer = technology_prompt_for_quiz()
+
+        if "doubt" in lower_msg or "confused" in lower_msg or "not sure" in lower_msg or "explain" in lower_msg or "understand" in lower_msg:
+            answer = (
+                "Here is the core idea: start with the main concept, connect it to a practical example, and then test yourself with a short section-wise quiz. "
+                "If you want, I can generate a quiz for Python, React, SQL, Java, AWS, Machine Learning, or Resume topics next."
             )
 
         if OLLAMA_BASE_URL and OLLAMA_MODEL and is_ollama_available():
@@ -282,6 +301,7 @@ def chat(request: ChatRequest):
             "used_documents": bool(doc_context),
             "redirect_to_quiz": redirect_to_quiz,
             "suggested_topic": suggested_topic,
+            "needs_technology": needs_technology,
         }
     except Exception as e:
         return {"error": str(e)}

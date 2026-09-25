@@ -15,25 +15,106 @@ class QuizRequest(BaseModel):
     difficulty: str = "beginner"
 
 
+TECHNOLOGY_SECTIONS = {
+    "python": [
+        "Python Basics",
+        "Data Structures",
+        "OOP Concepts",
+        "Error Handling",
+        "Modules and Libraries",
+        "Project Thinking"
+    ],
+    "react": [
+        "Components",
+        "State and Props",
+        "Hooks",
+        "Routing",
+        "API Integration",
+        "Performance"
+    ],
+    "sql": [
+        "Joins",
+        "Normalization",
+        "Indexes",
+        "Queries",
+        "Transactions",
+        "Optimization"
+    ],
+    "java": [
+        "Java Basics",
+        "OOP",
+        "Collections",
+        "Exception Handling",
+        "Multithreading",
+        "Spring Concepts"
+    ],
+    "aws": [
+        "Compute",
+        "Storage",
+        "Networking",
+        "Security",
+        "Databases",
+        "Cost Optimization"
+    ],
+    "machine learning": [
+        "Model Basics",
+        "Preprocessing",
+        "Evaluation",
+        "Feature Engineering",
+        "Training",
+        "Deployment"
+    ],
+    "resume": [
+        "Skills",
+        "Experience",
+        "Projects",
+        "Communication",
+        "Achievements",
+        "Interview Readiness"
+    ],
+}
+
+
+def detect_technology(topic: str):
+    value = (topic or "").lower()
+    for tech, sections in TECHNOLOGY_SECTIONS.items():
+        if tech in value:
+            return tech, sections
+    return "general interview", [
+        "Core Concepts",
+        "Application",
+        "Problem Solving",
+        "Communication",
+        "Practical Examples",
+        "Review"
+    ]
+
+
 def build_fallback_quiz(request: QuizRequest):
-    topic = request.topic.strip() or "the topic"
+    topic = (request.topic or "").strip() or "the topic"
+    technology, sections = detect_technology(topic)
+    question_count = max(1, min(request.num_questions, len(sections)))
     questions = []
-    for index in range(max(1, request.num_questions)):
-        label = f"Concept {index + 1}"
+    selected_sections = sections[:question_count]
+
+    for index, section in enumerate(selected_sections):
+        question_text = f"What is the most important thing to know about {section} in {technology.title()}?"
+        options = [
+            f"Understand the core idea and apply it using a practical example",
+            "Memorize the answer without understanding the concept",
+            "Skip examples and only focus on the final result",
+            "Avoid reviewing the topic after a first attempt"
+        ]
         questions.append(
             {
-                "question": f"What is the most important idea to remember about {topic}?",
-                "options": [
-                    f"{label}: Understand the main idea and apply it in practice",
-                    f"{label}: Skip the basics and memorize only the final answer",
-                    f"{label}: Ignore examples and focus only on the title",
-                    f"{label}: Avoid reviewing the topic after a first attempt"
-                ],
-                "answer": f"{label}: Understand the main idea and apply it in practice",
-                "explanation": f"Strong learning starts with understanding the key concept, then applying it through examples and practice.",
+                "section": section,
+                "question": question_text,
+                "options": options,
+                "answer": "Understand the core idea and apply it using a practical example",
+                "explanation": f"Strong performance in {technology.title()} comes from understanding the concept clearly, then practicing it in real examples and interview scenarios.",
             }
         )
-    return {"questions": questions}
+    return {"technology": technology.title(), "sections": selected_sections, "questions": questions}
 
 
 @router.post("/quiz/generate")
@@ -78,6 +159,10 @@ Return only the raw JSON.
             else:
                 raise HTTPException(status_code=500, detail="Invalid quiz format returned from model")
 
+        technology, sections = detect_technology(request.topic)
+        quiz_data.setdefault("technology", technology.title())
+        if not quiz_data.get("sections"):
+            quiz_data["sections"] = sections[:max(1, min(len(sections), request.num_questions))]
         return quiz_data
 
     except Exception as e:

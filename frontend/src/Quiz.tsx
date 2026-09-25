@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react'
 
 // TypeScript: define what a Question looks like
 interface Question {
+  section?: string
   question: string
   options: string[]
   answer: string
@@ -108,6 +109,9 @@ function Quiz({ initialTopic = '' }: QuizProps) {
 
         {questions.map((q, i) => (
           <div key={i} className="bg-gray-800 p-4 rounded-xl mb-4">
+            {q.section && (
+              <p className="text-xs uppercase tracking-wide text-purple-300 mb-2">Section: {q.section}</p>
+            )}
             <p className="font-bold mb-3">Q{i + 1}: {q.question}</p>
             <div className="space-y-2">
               {q.options.map((opt, j) => (

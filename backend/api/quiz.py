@@ -14,9 +14,34 @@ class QuizRequest(BaseModel):
     num_questions: int = 3
     difficulty: str = "beginner"
 
+
+def build_fallback_quiz(request: QuizRequest):
+    topic = request.topic.strip() or "the topic"
+    questions = []
+    for index in range(max(1, request.num_questions)):
+        label = f"Concept {index + 1}"
+        questions.append(
+            {
+                "question": f"What is the most important idea to remember about {topic}?",
+                "options": [
+                    f"{label}: Understand the main idea and apply it in practice",
+                    f"{label}: Skip the basics and memorize only the final answer",
+                    f"{label}: Ignore examples and focus only on the title",
+                    f"{label}: Avoid reviewing the topic after a first attempt"
+                ],
+                "answer": f"{label}: Understand the main idea and apply it in practice",
+                "explanation": f"Strong learning starts with understanding the key concept, then applying it through examples and practice.",
+            }
+        )
+    return {"questions": questions}
+
+
 @router.post("/quiz/generate")
 def generate_quiz(request: QuizRequest):
     try:
+        if not OLLAMA_BASE_URL or not OLLAMA_MODEL:
+            return build_fallback_quiz(request)
+
         prompt = f"""You are Priya Mentor AI, a helpful learning assistant.
 Generate a multiple-choice quiz about "{request.topic}" at a "{request.difficulty}" difficulty level.
 Generate exactly {request.num_questions} multiple-choice questions.
@@ -31,26 +56,23 @@ Each object must have the following keys:
 Return only the raw JSON.
 """
 
-        # Call Ollama with format="json"
         response = requests.post(
             f"{OLLAMA_BASE_URL}/api/generate",
             json={
                 "model": OLLAMA_MODEL,
                 "prompt": prompt,
                 "format": "json",
-                "stream": False
-            }
+                "stream": False,
+            },
+            timeout=20,
         )
         response.raise_for_status()
         data = response.json()
         answer = data.get("response", "")
 
-        # Parse the JSON response
         quiz_data = json.loads(answer)
-        
-        # Verify the structure has "questions"
+
         if "questions" not in quiz_data:
-            # Fallback or wrap in structure
             if isinstance(quiz_data, list):
                 quiz_data = {"questions": quiz_data}
             else:
@@ -60,20 +82,4 @@ Return only the raw JSON.
 
     except Exception as e:
         print(f"Quiz generation failed: {e}")
-        # Return a fallback quiz so the UI doesn't completely break
-        fallback = {
-            "questions": [
-                {
-                    "question": f"What is a key concept in {request.topic}?",
-                    "options": [
-                        f"Core concept A of {request.topic}",
-                        f"Core concept B of {request.topic}",
-                        f"Core concept C of {request.topic}",
-                        f"Core concept D of {request.topic}"
-                    ],
-                    "answer": f"Core concept A of {request.topic}",
-                    "explanation": f"This is a fallback question for {request.topic} because the AI generation failed or timed out."
-                }
-            ]
-        }
-        return fallback
+        return build_fallback_quiz(request)

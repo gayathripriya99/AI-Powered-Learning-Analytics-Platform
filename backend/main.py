@@ -9,6 +9,15 @@ from api.quiz import router as quiz_router
 
 load_dotenv()
 
+
+def get_allowed_origins():
+    raw_value = os.getenv("FRONTEND_URL", "http://localhost:5173")
+    origins = [item.strip() for item in str(raw_value).split(",") if item.strip()]
+    if not origins:
+        origins = ["http://localhost:5173"]
+    return origins
+
+
 app = FastAPI(
     title="Priya Mentor AI",
     description="Your Personal AI Learning Companion",
@@ -17,8 +26,8 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[os.getenv("FRONTEND_URL", "http://localhost:5173")],
-    allow_credentials=False,
+    allow_origins=get_allowed_origins(),
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
